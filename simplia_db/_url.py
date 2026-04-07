@@ -47,12 +47,40 @@ def normalize_async_url(url: str) -> str:
     return url
 
 
-def normalize_sync_url(url: str) -> str:
-    """Ensure URL uses plain ``postgresql://`` scheme (for psycopg2/sync engines)."""
+def normalize_sync_url(url: str, *, driver: str | None = None) -> str:
+    """Ensure URL uses the correct sync driver scheme.
+
+    Parameters
+    ----------
+    driver:
+        Explicit driver to use: ``"psycopg2"`` or ``"psycopg"`` (v3).
+        When None (default), auto-detects: tries psycopg2 first, then psycopg3.
+    """
     url = url.strip()
     url = re.sub(r"^postgres://", "postgresql://", url)
     url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    url = url.replace("postgresql+psycopg://", "postgresql://", 1)
     url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+
+    if not url.startswith("postgresql://"):
+        return url
+
+    if driver == "psycopg":
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if driver == "psycopg2":
+        return url  # plain postgresql:// defaults to psycopg2
+
+    # Auto-detect: prefer psycopg2 (most common), fall back to psycopg3
+    try:
+        import psycopg2  # noqa: F401
+        return url
+    except ImportError:
+        pass
+    try:
+        import psycopg  # noqa: F401
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    except ImportError:
+        pass
     return url
 
 

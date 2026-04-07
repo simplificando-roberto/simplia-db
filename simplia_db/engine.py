@@ -113,9 +113,17 @@ def create_resilient_sync_engine(
     pool_timeout: int = 30,
     pool_recycle: int = 900,
     connect_timeout: int = 10,
+    driver: str | None = None,
 ) -> Engine:
-    """Create a sync SQLAlchemy engine (for psycopg2 apps, Celery workers, etc.)."""
-    url = normalize_sync_url(database_url)
+    """Create a sync SQLAlchemy engine (for psycopg2 or psycopg3 apps, Celery workers, etc.).
+
+    Parameters
+    ----------
+    driver:
+        Explicit sync driver: ``"psycopg2"`` or ``"psycopg"`` (v3).
+        When None, auto-detects available driver.
+    """
+    url = normalize_sync_url(database_url, driver=driver)
     use_nullpool = is_pooler_url(url)
 
     connect_args = build_psycopg2_connect_args(
