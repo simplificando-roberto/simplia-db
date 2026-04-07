@@ -78,13 +78,15 @@ def create_resilient_engine(
             mask_url(url),
         )
     else:
-        kwargs["poolclass"] = QueuePool
+        # Do NOT pass poolclass=QueuePool for async engines -- SQLAlchemy
+        # auto-selects AsyncAdaptedQueuePool.  Passing the sync QueuePool
+        # raises: "Pool class QueuePool cannot be used with asyncio engine".
         kwargs["pool_size"] = max(1, pool_size)
         kwargs["max_overflow"] = max(0, max_overflow)
         kwargs["pool_timeout"] = pool_timeout
         kwargs["pool_recycle"] = pool_recycle
         logger.debug(
-            "Using QueuePool (size=%d, overflow=%d, recycle=%ds) for: %s",
+            "Using default async pool (size=%d, overflow=%d, recycle=%ds) for: %s",
             pool_size,
             max_overflow,
             pool_recycle,
