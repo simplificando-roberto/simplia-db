@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simplia-db"
+version = "0.1.0"
+description = "Shared database resilience layer for Simplia ecosystem (Supabase PostgreSQL)"
+requires-python = ">=3.10"
+dependencies = [
+    "sqlalchemy>=2.0.25",
+]
+
+[project.optional-dependencies]
+asyncpg = ["asyncpg>=0.29.0"]
+psycopg2 = ["psycopg2-binary>=2.9.9"]
+all = ["asyncpg>=0.29.0", "psycopg2-binary>=2.9.9"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+
+[tool.setuptools.packages.find]
+include = ["simplia_db*"]
