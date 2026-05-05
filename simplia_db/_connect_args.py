@@ -62,16 +62,45 @@ def build_asyncpg_connect_args(
     return args
 
 
+def _is_psycopg3_url(database_url: str) -> bool:
+    """Detect whether the SQLAlchemy URL targets psycopg3 (``postgresql+psycopg://``).
+
+    psycopg2 uses plain ``postgresql://`` (no driver suffix).
+    """
+    return database_url.lstrip().startswith("postgresql+psycopg://")
+
+
 def build_psycopg2_connect_args(
     database_url: str,
     *,
     application_name: str = "simplia_app",
     connect_timeout: int = 10,
 ) -> dict:
-    """Build ``connect_args`` dict for a psycopg2-backed sync SQLAlchemy engine."""
+    """Build ``connect_args`` dict for a sync SQLAlchemy engine (psycopg2 or psycopg3).
+
+    Despite the legacy name, this also handles psycopg3 (``postgresql+psycopg://``)
+    URLs. When the driver is psycopg3 AND the URL is a Supabase pooler URL
+    (transaction-mode PgBouncer/Supavisor), ``prepare_threshold=None`` is added
+    to disable client-side prepared-statement caching. Without this, psycopg3
+    auto-creates prepared statements with reusable names like ``_pg3_0`` that
+    collide on the pooler backend across reused connections, raising
+    ``DuplicatePreparedStatement``.
+
+    psycopg2 has no equivalent auto-prepare and is unaffected.
+    """
     args: dict = {
         "connect_timeout": connect_timeout,
     }
     if application_name:
         args["application_name"] = application_name
+
+    # psycopg3 + pooler: disable auto-prepare to avoid name collisions on the pooler.
+    if _is_psycopg3_url(database_url) and is_pooler_url(database_url):
+        args["prepare_threshold"] = None
+
     return args
+
+
+# Public alias with a name that reflects the function's actual scope (sync drivers,
+# not just psycopg2). The legacy name is kept exported for backward compatibility.
+build_sync_connect_args = build_psycopg2_connect_args
