@@ -13,7 +13,14 @@ from sqlalchemy.pool import NullPool, QueuePool
 
 from simplia_db._connect_args import build_asyncpg_connect_args, build_psycopg2_connect_args
 from simplia_db._search_path import install_search_path_listener
-from simplia_db._url import is_pooler_url, mask_url, normalize_async_url, normalize_sync_url
+from simplia_db._url import (
+    extract_ssl_mode,
+    is_pooler_url,
+    mask_url,
+    normalize_async_url,
+    normalize_sync_url,
+    strip_asyncpg_incompatible_params,
+)
 
 logger = logging.getLogger("simplia_db")
 
@@ -51,6 +58,12 @@ def create_resilient_engine(
       introspection that can fail on transient connection issues
     """
     url = normalize_async_url(database_url)
+    # asyncpg does not accept libpq-style params (sslmode, options, ...). Pull
+    # sslmode out into an explicit ssl context and strip them from the engine URL
+    # so a Hetzner URL like "...:6432/acv2?sslmode=require" connects cleanly.
+    if ssl_mode is None:
+        ssl_mode = extract_ssl_mode(url)
+    url = strip_asyncpg_incompatible_params(url)
     use_nullpool = is_pooler_url(url)
 
     connect_args = build_asyncpg_connect_args(

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit, urlparse
 
 
 def is_supabase_host(url: str) -> bool:
@@ -20,20 +21,80 @@ def is_supabase_host(url: str) -> bool:
         return False
 
 
+_GENERIC_TRANSACTION_POOLER_PORTS = {6432}
+
+
 def is_pooler_url(url: str) -> bool:
-    """Detect Supabase Supavisor/PgBouncer pooler URLs.
+    """Detect transaction-mode pooler URLs (Supabase Supavisor OR PgBouncer).
 
     Returns True for:
-    - *.pooler.supabase.com hostname
-    - Port 6543 (Supabase transaction-mode pooler)
+    - ``*.pooler.supabase.com`` hostname
+    - Port 6543 (Supabase Supavisor transaction pooler)
+    - Port 6432 (self-hosted PgBouncer, e.g. the Hetzner primary)
+    - When env ``DB_FORCE_TRANSACTION_POOLER`` is truthy (non-standard ports)
+
+    Against any of these the client must disable prepared-statement caching and
+    use unique prepared-statement names, because the physical backend connection
+    can change between transactions.
     """
+    if _env_flag("DB_FORCE_TRANSACTION_POOLER"):
+        return True
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
         port = int(parsed.port or 0)
-        return host.endswith(".pooler.supabase.com") or port == 6543
+        if host.endswith(".pooler.supabase.com") or port == 6543:
+            return True
+        return port in _GENERIC_TRANSACTION_POOLER_PORTS
     except Exception:
         return False
+
+
+def _env_flag(name: str) -> bool:
+    return str(os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# libpq-style query params that asyncpg.connect() does NOT accept as kwargs.
+# They must be stripped from the URL and translated (sslmode -> ssl context).
+_ASYNCPG_INCOMPATIBLE_QUERY_KEYS = {
+    "sslmode",
+    "sslrootcert",
+    "sslcert",
+    "sslkey",
+    "options",
+    "target_session_attrs",
+}
+
+
+def extract_ssl_mode(url: str) -> str | None:
+    """Return the ``sslmode`` value from a URL query string, if present."""
+    try:
+        for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True):
+            if key == "sslmode":
+                return (value or "").strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def strip_asyncpg_incompatible_params(url: str) -> str:
+    """Remove libpq-only query params (sslmode, options, ...) from a URL.
+
+    asyncpg rejects these as connect kwargs; SSL is applied separately via an
+    ssl context. Safe no-op when there is no query string.
+    """
+    try:
+        parts = urlsplit(url)
+        if not parts.query:
+            return url
+        kept = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k not in _ASYNCPG_INCOMPATIBLE_QUERY_KEYS
+        ]
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment))
+    except Exception:
+        return url
 
 
 def normalize_async_url(url: str) -> str:

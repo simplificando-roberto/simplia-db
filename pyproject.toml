@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simplia-db"
-version = "0.2.0"
-description = "Shared database resilience layer for Simplia ecosystem (Supabase PostgreSQL)"
+version = "0.3.0"
+description = "Shared database resilience layer for Simplia ecosystem (Supabase + self-hosted PgBouncer/Hetzner PostgreSQL)"
 requires-python = ">=3.10"
 dependencies = [
     "sqlalchemy>=2.0.25",

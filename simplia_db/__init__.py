@@ -1,11 +1,15 @@
 """simplia-db: Shared database resilience layer for Simplia ecosystem."""
 
+__version__ = "0.3.0"
+
 from simplia_db._url import (
+    extract_ssl_mode,
     is_pooler_url,
     is_supabase_host,
     mask_url,
     normalize_async_url,
     normalize_sync_url,
+    strip_asyncpg_incompatible_params,
 )
 from simplia_db._ssl import build_ssl_context
 from simplia_db._search_path import install_search_path_listener, normalize_search_path
@@ -20,11 +24,14 @@ from simplia_db.startup import init_db_with_retry, check_connection, dispose_eng
 from simplia_db.health import check_db_health
 
 __all__ = [
+    "__version__",
+    "extract_ssl_mode",
     "is_pooler_url",
     "is_supabase_host",
     "mask_url",
     "normalize_async_url",
     "normalize_sync_url",
+    "strip_asyncpg_incompatible_params",
     "build_ssl_context",
     "install_search_path_listener",
     "normalize_search_path",
