@@ -1,0 +1,34 @@
+app_key: simplia-db
+repo: https://github.com/simplificando-roberto/simplia-db.git
+repo_owner: simplificando-roberto
+default_branch: master
+stack:
+  type: [python]
+paths:
+  root: .
+commands:
+  install:
+    - python3 -m venv .venv
+    - .venv/bin/python -m pip install --no-deps -r ci/requirements-ci.txt
+    - .venv/bin/python -m pip install --no-deps --no-build-isolation .
+    - .venv/bin/python -m pip check
+  test:
+    - .venv/bin/python -m pytest tests -q
+  build:
+    - .venv/bin/python -m pip wheel --no-deps --no-build-isolation --wheel-dir .simplia-ci/wheels .
+ci:
+  fast_pr:
+    enabled: false
+  path_filters:
+    enabled: false
+  test_selection:
+    mode: 'off'
+  heavy_tests:
+    enabled: true
+deploy:
+  type: none
+health: {}
+security:
+  trivy: true
+  fail_on_vulnerability: true
+  severity: HIGH,CRITICAL
