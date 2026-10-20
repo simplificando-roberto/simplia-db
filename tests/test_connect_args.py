@@ -8,8 +8,12 @@ pooler.
 
 from __future__ import annotations
 
+import ssl
+from unittest.mock import Mock
+
 import pytest
 
+import simplia_db.engine as engine_module
 from simplia_db._connect_args import (
     build_asyncpg_connect_args,
     build_psycopg2_connect_args,
@@ -116,7 +120,7 @@ class TestBuildSyncConnectArgsCommonFields:
 
 
 class TestBuildAsyncpgUnaffected:
-    """The async path was already correct — verify the patch did not regress it."""
+    """Async pooler statement-cache safeguards remain enabled."""
 
     def test_pooler_disables_prepared_statement_cache(self):
         url = "postgresql+asyncpg://u:p@aws-1.pooler.supabase.com:6543/db"
@@ -132,3 +136,70 @@ class TestBuildAsyncpgUnaffected:
         assert args["statement_cache_size"] == 0
         assert "prepared_statement_cache_size" not in args
         assert "prepared_statement_name_func" not in args
+
+
+class TestAsyncpgSSL:
+    @pytest.mark.parametrize("url", [LOCAL_PSYCOPG2, DIRECT_PSYCOPG2])
+    @pytest.mark.parametrize("auto_ssl", [False, True])
+    def test_disable_is_explicit_false(self, url, auto_ssl):
+        args = build_asyncpg_connect_args(url, ssl_mode="disable", auto_ssl=auto_ssl)
+        assert args["ssl"] is False
+
+    @pytest.mark.parametrize(
+        "url, auto_ssl, enabled",
+        [
+            (LOCAL_PSYCOPG2, True, False),
+            (LOCAL_PSYCOPG2, False, False),
+            (DIRECT_PSYCOPG2, True, True),
+            (DIRECT_PSYCOPG2, False, False),
+        ],
+    )
+    def test_auto_detection_gate(self, url, auto_ssl, enabled):
+        args = build_asyncpg_connect_args(url, auto_ssl=auto_ssl)
+        if enabled:
+            assert isinstance(args["ssl"], ssl.SSLContext)
+            assert args["ssl"].verify_mode == ssl.CERT_NONE
+            assert args["ssl"].check_hostname is False
+        else:
+            assert "ssl" not in args
+
+
+class TestResilientEngineSSL:
+    @pytest.fixture
+    def engine_factory(self, monkeypatch):
+        # Intercept the SQLAlchemy boundary: no driver import or DB connection.
+        factory = Mock()
+        monkeypatch.setattr(engine_module, "create_async_engine", factory)
+        return factory
+
+    @pytest.mark.parametrize("mode", ["disable", "require", "verify-ca", "verify-full"])
+    @pytest.mark.parametrize("source", ["url", "explicit"])
+    @pytest.mark.parametrize("auto_ssl", [False, True])
+    def test_mode_survives_url_cleanup(self, engine_factory, mode, source, auto_ssl):
+        # Conflicting URL mode also proves explicit arguments take precedence.
+        url_mode = mode if source == "url" else (
+            "require" if mode == "disable" else "disable"
+        )
+        kwargs = {} if source == "url" else {"ssl_mode": mode}
+        result = engine_module.create_resilient_engine(
+            DIRECT_PSYCOPG2 + f"?sslmode={url_mode}&application_name=ssl_test",
+            auto_ssl=auto_ssl,
+            **kwargs,
+        )
+
+        engine_factory.assert_called_once()
+        assert result is engine_factory.return_value
+        url = engine_factory.call_args.args[0]
+        assert url == (
+            DIRECT_PSYCOPG2.replace("postgresql://", "postgresql+asyncpg://", 1)
+            + "?application_name=ssl_test"
+        )
+        setting = engine_factory.call_args.kwargs["connect_args"]["ssl"]
+        if mode == "disable":
+            assert setting is False
+        else:
+            assert isinstance(setting, ssl.SSLContext)
+            assert setting.verify_mode == (
+                ssl.CERT_NONE if mode == "require" else ssl.CERT_REQUIRED
+            )
+            assert setting.check_hostname is (mode == "verify-full")
