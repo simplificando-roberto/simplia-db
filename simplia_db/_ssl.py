@@ -35,10 +35,11 @@ def build_ssl_context(
     -------
     - ``ssl.SSLContext`` for asyncpg ``connect_args["ssl"]``
     - ``True`` for simple SSL-on
-    - ``None`` when SSL should not be configured
+    - ``False`` to explicitly disable SSL
+    - ``None`` when no SSL setting is specified or auto-detected
     """
     if ssl_mode == "disable":
-        return None
+        return False
 
     if ssl_mode in ("verify-ca", "verify-full"):
         ctx = ssl.create_default_context()
